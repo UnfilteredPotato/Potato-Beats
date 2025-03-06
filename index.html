@@ -202,12 +202,48 @@
         .key-guide td {
             padding: 5px;
         }
+
+        #audio-status {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background-color: #4d0034;
+            color: white;
+            border-radius: 20px;
+            font-size: 14px;
+            display: inline-block;
+        }
+
+        #audio-status.active {
+            background-color: #00a86b;
+        }
+
+        .audio-notification {
+            background-color: #ffe1ef;
+            border: 2px solid #ff3a83;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .audio-notification::before {
+            content: "🔊";
+            font-size: 20px;
+        }
     </style>
 </head>
 <body>
     <h1>🥔 Potato Beats 🥔</h1>
     
     <div class="container">
+        <div class="audio-notification">
+            Click anywhere or press a key to enable audio!
+            <span id="audio-status">Waiting for interaction</span>
+        </div>
+
         <div class="controls">
             <button id="play-sequence">Play Sequence</button>
             <button id="stop-sequence">Stop</button>
@@ -251,23 +287,33 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // Audio context setup
-            let audioContext;
+            let audioContext = null;
             let sequencerInterval;
             let currentStep = -1;
             let isPlaying = false;
             let tempo = 120;
+            let audioEnabled = false;
+            const audioStatus = document.getElementById('audio-status');
             
-            // Define our sounds
+            // Define our sounds with more reliable URLs
             const sounds = {
-                'kick': createSound('./kick.mp3', 'https://assets.codepen.io/1631702/kick.wav'),
-                'snare': createSound('./snare.mp3', 'https://assets.codepen.io/1631702/snare.wav'),
-                'hihat': createSound('./hihat.mp3', 'https://assets.codepen.io/1631702/hihat.wav'),
-                'tom': createSound('./tom.mp3', 'https://assets.codepen.io/1631702/tom.wav'),
-                'clap': createSound('./clap.mp3', 'https://assets.codepen.io/1631702/clap.wav'),
-                'perc': createSound('./perc.mp3', 'https://assets.codepen.io/1631702/perc.wav'),
-                'kick2': createSound('./kick2.mp3', 'https://assets.codepen.io/1631702/kick2.wav'),
-                'open-hihat': createSound('./open-hihat.mp3', 'https://assets.codepen.io/1631702/open-hihat.wav')
+                'kick': 'https://cdn.freesound.org/previews/171/171104_2394245-lq.mp3',
+                'snare': 'https://cdn.freesound.org/previews/387/387186_7255534-lq.mp3',
+                'hihat': 'https://cdn.freesound.org/previews/396/396544_7255534-lq.mp3',
+                'tom': 'https://cdn.freesound.org/previews/156/156031_2538033-lq.mp3',
+                'clap': 'https://cdn.freesound.org/previews/215/215415_1519369-lq.mp3',
+                'perc': 'https://cdn.freesound.org/previews/411/411642_5121236-lq.mp3',
+                'kick2': 'https://cdn.freesound.org/previews/522/522950_10386862-lq.mp3',
+                'open-hihat': 'https://cdn.freesound.org/previews/315/315915_5495244-lq.mp3'
             };
+            
+            // Preload sounds
+            const soundCache = {};
+            for (const [key, url] of Object.entries(sounds)) {
+                const audio = new Audio();
+                audio.src = url;
+                soundCache[key] = audio;
+            }
             
             // Initialize sequencer
             const sequencerRows = ['kick', 'snare', 'hihat', 'tom', 'clap', 'perc'];
@@ -303,6 +349,10 @@
                     
                     step.addEventListener('click', function() {
                         this.classList.toggle('active');
+                        // Play the sound when toggling on
+                        if (this.classList.contains('active')) {
+                            playSound(soundName);
+                        }
                     });
                     
                     sequencerElement.appendChild(step);
@@ -312,16 +362,23 @@
                 sequencerGrid.push(row);
             }
             
-            // Function to create sounds
-            function createSound(localPath, fallbackURL) {
-                // We'll first attempt to use the local path, then fall back to the URL if needed
-                return localPath;
-            }
-            
             // Initialize audio context on user interaction
             function initAudio() {
                 if (!audioContext) {
                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                // Check if context is in suspended state (autoplay policy)
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                
+                if (!audioEnabled) {
+                    audioEnabled = true;
+                    audioStatus.textContent = "Audio Enabled!";
+                    audioStatus.classList.add('active');
+                    document.querySelector('.audio-notification').style.backgroundColor = "#e0ffe0";
+                    document.querySelector('.audio-notification').style.borderColor = "#00a86b";
                 }
             }
             
@@ -329,12 +386,19 @@
             function playSound(sound) {
                 initAudio();
                 
-                // Create audio element
-                const audio = new Audio(sounds[sound]);
-                audio.volume = 1.0;
-                audio.play();
+                // Clone the audio element to allow overlapping sounds
+                const source = soundCache[sound].cloneNode();
+                source.volume = 1.0;
                 
-                return audio;
+                const playPromise = source.play();
+                
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.error("Audio playback error:", error);
+                    });
+                }
+                
+                return source;
             }
             
             // Play drum pad when clicked
@@ -355,6 +419,9 @@
             // Play drum pad when key pressed
             document.addEventListener('keydown', function(e) {
                 if (e.repeat) return; // Prevent holding keys
+                
+                // Enable audio on first interaction
+                initAudio();
                 
                 const key = e.key.toLowerCase();
                 
@@ -384,6 +451,11 @@
                 if (pad) {
                     pad.classList.remove('active');
                 }
+            });
+            
+            // Enable audio on any click
+            document.addEventListener('click', function() {
+                initAudio();
             });
             
             // Sequencer functions
